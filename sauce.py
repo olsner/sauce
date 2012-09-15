@@ -41,6 +41,9 @@ class File(object):
         return "File(%s,%d bytes in %d lines)" % (repr(self.uri), self.total, len(self.lines))
 
 def parseDwarfDump(lines):
+    lasturi = None
+    lastaddr = None
+    lastline = None
     uri = None
     for s in lines:
         if s[0] != '0': continue
@@ -63,34 +66,30 @@ def parseDwarfDump(lines):
             else: continue
 
         assert uri is not None
-        yield (addr, uri, line, intext)
 
-def blameLines(data):
-    files = {}
-    lines = set()
-
-    lasturi = None
-    lastaddr = None
-    lastline = None
-    file = None
-    for addr,uri,line,intext in data:
         #print 'curr', uri,line,addr,intext
         #print 'prev', lasturi, lastline, lastaddr
 
         if lastaddr is not None:
-            #print 'blaming', lastline, 'in', file.uri, 'for', '%d..%d' % (lastaddr, addr)
-            l = file.add(lastline, lastaddr, addr - lastaddr)
-            lines.add(l)
-        if uri != lasturi:
-            file = files.setdefault(uri, File(uri))
-            lasturi = uri
+            #print 'blaming', lastline, 'in', lasturi, 'for', '%d..%d' % (lastaddr, addr)
+            yield (lastaddr, addr, lasturi, lastline)
 
+        lasturi = uri
         if intext:
             lastaddr = addr
             lastline = line
         # If this was an end-of-text entry, don't count the bytes between this one and the next
         else:
             lastaddr = None
+
+def blameLines(data):
+    files = {}
+    lines = set()
+
+    for start,end,uri,line in data:
+        file = files.setdefault(uri, File(uri))
+        l = file.add(line, start, end - start)
+        lines.add(l)
 
     return files, lines
 
@@ -113,8 +112,10 @@ def test():
 0x00000bf0  [ 944, 0] NS
 0x00000bf7  [ 948, 0] NS
 0x00000bff  [ 948, 0] NS ET""".split('\n')
-    files, lines = blameLines(parseDwarfDump(data))
-    assert dumpCanon(files) == [
+    parsedData = list(parseDwarfDump(data))
+    files, lines = blameLines(parsedData)
+    actual = dumpCanon(files)
+    expected = [
         (0x24c0, 0x24d5, "f1", 52),
         (0xbf0, 0xbf7, "f2", 944),
         (0xbf7, 0xbff, "f2", 948),
@@ -122,6 +123,8 @@ def test():
         (0x253b, 0x255c, "f2", 1123),
         (0x24d5, 0x24e8, "f2", 1127),
     ]
+    assert actual == expected, repr(dumpCanon(files))+" != "+repr(expected)
+    assert actual == sorted(parsedData, key = lambda l: l[2:])
 
 test()
 
