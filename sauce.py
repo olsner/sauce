@@ -153,7 +153,7 @@ for f in allFiles[:N_FILES]:
 print
 print 'LINE SUMMARY'
 for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
-    print '%s:%d: %d bytes' % (l.uri(), l.line, l.total)
+    print '%s:%d: %d bytes in %d places' % (l.uri(), l.line, l.total, len(l.places))
     if printAllPlaces:
         for offset,length in l.places:
             print '\t%x..%x' % (offset, offset + length)
