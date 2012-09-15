@@ -129,6 +129,9 @@ import os
 import subprocess
 import sys
 
+if len(sys.argv) == 2:
+    sys.stdin = os.popen("dwarfdump -l " + sys.argv[1])
+
 files, lines = blameLines(parseDwarfDump(sys.stdin))
 
 # TODO Examine the binary, see how big the .text section is (used to find code
