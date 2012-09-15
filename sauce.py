@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # vim:et:
 
 class Line(object):
@@ -64,7 +65,10 @@ def parseDwarfDump(lines):
         assert uri is not None
         yield (addr, uri, line, intext)
 
-def blameLines(data, files, lines):
+def blameLines(data):
+    files = {}
+    lines = set()
+
     lasturi = None
     lastaddr = None
     lastline = None
@@ -88,13 +92,44 @@ def blameLines(data, files, lines):
         else:
             lastaddr = None
 
+    return files, lines
+
+def dumpCanon(files):
+    res = []
+    for uri in sorted(files.keys()):
+        f = files[uri]
+        for i,l in sorted(f.lines.items()):
+            for off,len in sorted(l.places):
+                res.append((off, off+len, uri, i))
+    return res
+
+def test():
+    data = \
+"""0x000024c0  [  52, 0] NS uri: "f1"
+0x000024d5  [1127, 0] NS uri: "f2"
+0x000024e8  [1098, 0] NS
+0x0000253b  [1123, 0] NS
+0x0000255c  [1123, 0] NS ET
+0x00000bf0  [ 944, 0] NS
+0x00000bf7  [ 948, 0] NS
+0x00000bff  [ 948, 0] NS ET""".split('\n')
+    files, lines = blameLines(parseDwarfDump(data))
+    assert dumpCanon(files) == [
+        (0x24c0, 0x24d5, "f1", 52),
+        (0xbf0, 0xbf7, "f2", 944),
+        (0xbf7, 0xbff, "f2", 948),
+        (0x24e8, 0x253b, "f2", 1098),
+        (0x253b, 0x255c, "f2", 1123),
+        (0x24d5, 0x24e8, "f2", 1127),
+    ]
+
+test()
+
+import os
+import subprocess
 import sys
 
-data = list(parseDwarfDump(sys.stdin))
-
-files = {} # name -> File
-lines = set()
-blameLines(data, files, lines)
+files, lines = blameLines(parseDwarfDump(sys.stdin))
 
 # TODO Examine the binary, see how big the .text section is (used to find code
 # that has no lines associated).
