@@ -1,6 +1,16 @@
 #!/usr/bin/env python
 # vim:et:
 
+class Section(object):
+    def __init__(self, name):
+        self.name = name
+        self.start = None
+        self.end = None
+        self.size = None
+
+    def __repr__(self):
+        return "%s: %x..%x" % (self.name, self.start, self.end)
+
 class Line(object):
     def __init__(self, file, line):
         self.file = file
@@ -42,6 +52,29 @@ class File(object):
 
     def __repr__(self):
         return "File(%s,%d bytes in %d lines)" % (repr(self.uri), self.total, len(self.lines))
+
+def isint(s):
+    try: int(s); return True
+    except: return False
+
+def parseSections(lines):
+    section = None
+    name = None
+
+    for s in lines:
+        s = s.strip()
+        if s.startswith("[") and isint(s[1:2]):
+            fs = map(str.strip, s[s.find(']')+1:].split())
+            name = fs[0]
+            section = Section(name)
+            section.start = int(fs[2], 16)
+        elif section is not None:
+            fs = map(str.strip, s.strip().split())
+            section.size = int(fs[0], 16)
+            section.end = section.start + section.size
+            yield name, section
+            section = None
+            name = None
 
 def parseDwarfDump(lines):
     lasturi = None
@@ -85,16 +118,30 @@ def parseDwarfDump(lines):
         else:
             lastaddr = None
 
-def blameLines(data):
+def blameLines(data, text = None):
     files = {}
     lines = set()
 
     for start,end,uri,line in data:
+        # Ignore code from before the start of .text.
+        #
+        # Code that has been removed by --gc-sections will actually have all
+        # its debug info left around, just with the code address set to 0.
+        #
+        # This is a bit messier for shared libraries where most addresses are
+        # stored relative to the start of the .so file - then this only works
+        # as long as functions are smaller than the size of all stuff before
+        # the .text section begins.
+        if text and start < text.start: continue
+
         file = files.setdefault(uri, File(uri))
         l = file.add(line, start, end - start)
         lines.add(l)
 
     return files, lines
+
+def perc(x, total):
+    return 100 * float(x) / total
 
 def dumpCanon(files):
     res = []
@@ -135,26 +182,38 @@ import os
 import subprocess
 import sys
 
+binaryFile = None
+
 if len(sys.argv) == 2:
-    sys.stdin = os.popen("dwarfdump -l " + sys.argv[1])
+    binaryFile = sys.argv[1]
 
-files, lines = blameLines(parseDwarfDump(sys.stdin))
+sections = {}
 
-# TODO Examine the binary, see how big the .text section is (used to find code
-# that has no lines associated).
-# textBytes = ???
+if binaryFile:
+    sections = dict(parseSections(os.popen("readelf -S "+binaryFile)))
+    sys.stdin = os.popen("dwarfdump -l " + binaryFile)
+
+text = sections.get('.text')
+files, lines = blameLines(parseDwarfDump(sys.stdin), text)
+
+textBytes = text.size
 totalBytes = sum(map(File.getTotal, files.values()))
 
 N_FILES = 20
 N_LINES = 20
 printAllPlaces = False
 
+#print 'TOTALS'
+#print '.text size: %d bytes' % text.size
+#print 'blamed bytes: %d bytes (%2.1f%%)' % (totalBytes, perc(totalBytes, text.size))
+#print
+
 print 'FILE SUMMARY (out of %d files)' % len(files)
 allFiles = files.values()
 allFiles.sort(key = File.getTotal, reverse = True)
 for f in allFiles[:N_FILES]:
     bytes = f.total
-    print '%s: %d bytes (%2.1f%%) in %d places/%d lines' % (f.uri, bytes, 100 * float(bytes) / totalBytes, f.getTotalPlaces(), len(f.lines))
+    print '%s: %d bytes (%2.1f%%) in %d places/%d lines' % (f.uri, bytes, perc(bytes, totalBytes), f.getTotalPlaces(), len(f.lines))
 
 print
 print 'LINE SUMMARY'

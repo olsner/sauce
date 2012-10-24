@@ -1,0 +1,26 @@
+./test.sh
+<<<
+int main() { return 7; }
+>>>/<stdin>:.* bytes.* places\/1 lines/
+>>>= 0
+
+./test.sh
+<<<
+int main() { return 7; }
+>>>/<stdin>:1: .* bytes in [0-9]+ places/
+>>>= 0
+
+# Check that unused and --gc-section'ed code does not appear
+./test.sh
+<<<
+int unused() { return 1234; }
+int main() { return 7; }
+>>>!/<stdin>:1:/
+>>>= 0
+
+./test.sh
+<<<
+int used() { return 1234; }
+int main() { return used(); }
+>>>/<stdin>:1:/
+>>>= 0
