@@ -34,6 +34,9 @@ class File(object):
     def getTotal(self):
         return self.total
 
+    def getTotalPlaces(self):
+        return sum(map(lambda l: len(l.places), self.lines.values()))
+
     def __str__(self):
         return "File(%s,%d bytes in %d lines)" % (self.uri, self.total, len(self.lines))
 
@@ -151,7 +154,7 @@ allFiles = files.values()
 allFiles.sort(key = File.getTotal, reverse = True)
 for f in allFiles[:N_FILES]:
     bytes = f.total
-    print '%s: %d bytes (%2.1f%%)' % (f.uri, bytes, 100 * float(bytes) / totalBytes)
+    print '%s: %d bytes (%2.1f%%) in %d places/%d lines' % (f.uri, bytes, 100 * float(bytes) / totalBytes, f.getTotalPlaces(), len(f.lines))
 
 print
 print 'LINE SUMMARY'
