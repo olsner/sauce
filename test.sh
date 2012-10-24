@@ -11,7 +11,7 @@ EOF
 }
 
 tempf="`mktemp`" || exit 1
-./testcompile.sh - "$tempf" &&
+./testcompile${kind}.sh - "$tempf" &&
 ./sauce.py "$tempf"
 e=$?
 rm -f "$tempf"

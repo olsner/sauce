@@ -24,3 +24,17 @@ int used() { return 1234; }
 int main() { return used(); }
 >>>/<stdin>:1:/
 >>>= 0
+
+kind=shared ./test.sh
+<<<
+int unused() { return 1234; }
+int EXPORT exported() { return 7; }
+>>>!/<stdin>:1:/
+>>>= 0
+
+kind=shared ./test.sh
+<<<
+int used() { return 1234; }
+int EXPORT exported() { return used(); }
+>>>/<stdin>:1:/
+>>>= 0
