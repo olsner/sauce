@@ -84,14 +84,14 @@ def parseSections(lines):
 
     for s in lines:
         s = s.strip()
-        if s.startswith("[") and isint(s[1:2]):
-            fs = map(str.strip, s[s.find(']')+1:].split())
+        if not s.startswith("["): continue
+        ix,rest = s.split(']', 1)
+        if isint(ix[1:]):
+            fs = map(str.strip, rest.strip().split())
             name = fs[0]
             section = Section(name)
             section.start = int(fs[2], 16)
-        elif section is not None:
-            fs = map(str.strip, s.strip().split())
-            section.size = int(fs[0], 16)
+            section.size = int(fs[4], 16)
             section.end = section.start + section.size
             yield name, section
             section = None
@@ -211,7 +211,7 @@ if len(sys.argv) == 2:
 sections = {}
 
 if binaryFile:
-    sections = dict(parseSections(os.popen("readelf -S "+binaryFile)))
+    sections = dict(parseSections(os.popen("readelf -SW "+binaryFile)))
     sys.stdin = os.popen("dwarfdump -l " + binaryFile)
 
 text = sections.get('.text')
