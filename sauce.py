@@ -23,6 +23,7 @@
 # vim:et:
 
 import cPickle
+import operator
 import os
 import posixpath
 import subprocess
@@ -130,6 +131,57 @@ class File(object):
         for num, line in sorted(self.lines.iteritems()):
             line.dump()
 
+class Node(object):
+    def __init__(self):
+        self.children = {}
+        self.total = None
+
+    def getTotal(self):
+        if self.total is None:
+            self.total = reduce(operator.add, (n.getTotal() for n in self))
+        return self.total
+
+    # Perhaps we could use a catch-all to forward "everything else" to self.children?
+    def __getitem__(self, *args):
+        return self.children.__getitem__(*args)
+
+    def __setitem__(self, *args):
+        return self.children.__setitem__(*args)
+
+    def __iter__(self):
+        return self.children.itervalues()
+
+    def iteritems(self):
+        return self.children.iteritems()
+
+    def setdefault(self, key, default):
+        return self.children.setdefault(key, default)
+
+    def __repr__(self):
+        return repr(self.children)
+
+    def __str__(self):
+        return str(self.children)
+
+def treeify(files):
+    dest = Node()
+    for uri,f in files.iteritems():
+        # Assumes posix path. Add a conversion step somewhere if you want to
+        # run on Windows.
+        path = uri.lstrip('/')
+        node = dest
+        components = path.split('/')
+        for p in components[:-1]:
+            node = node.setdefault(p, Node())
+        node[components[-1]] = f
+    return dest
+
+def dump_tree_du(h, tree, path = '/'):
+    if isinstance(tree, Node):
+        for k,v in tree.iteritems():
+            dump_tree_du(h, v, os.path.join(path, k))
+    print >>h, tree.getTotal(), path
+
 def isint(s):
     try: int(s); return True
     except: return False
@@ -211,6 +263,7 @@ def blameLines(data, text = None):
         # the .text section begins.
         if text and start < text.start: continue
 
+        uri = os.path.normpath(uri)
         file = files.setdefault(uri, File(uri))
         l = file.add(line, start, end - start)
         lines.add(l)
@@ -266,6 +319,9 @@ sections = {}
 files = None
 # Should be a command-line option
 dumpPickle = None
+# Another command-line option: display code size per file and directory like
+# du. Run through 'sort -n' to get an idea of components that cause bloat.
+dumpDuData = False
 
 if binaryFile and binaryFile.endswith(".pickle"):
     print "Loading parsed data from pickle..."
@@ -323,3 +379,6 @@ for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
     if printAllPlaces:
         for offset,length in l.places:
             print '\t%x..%x' % (offset, offset + length)
+
+if dumpDuData:
+    dump_tree_du(sys.stdout, treeify(files))
