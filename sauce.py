@@ -38,6 +38,35 @@ class Section(object):
     def __repr__(self):
         return "%s: %x..%x" % (self.name, self.start, self.end)
 
+def merge((s1, l1), (s2, l2)):
+    assert s1 <= s2
+    e1 = s1 + l1
+    e2 = s2 + l2
+
+    if s2 <= e1:
+        s = min(s1, s2)
+        e = max(e1, e2)
+        return (s, e - s)
+
+    return None
+
+def mergeRanges(ps):
+    ps = sorted(ps)
+    prev = None
+    for p in ps:
+        if prev is None:
+            prev = p
+            continue
+
+        merged = merge(prev, p)
+        if merged:
+            prev = merged
+        else:
+            yield prev
+            prev = p
+    if prev:
+        yield prev
+
 class Line(object):
     def __init__(self, file, line):
         self.file = file
@@ -51,6 +80,18 @@ class Line(object):
 
     def uri(self):
         return self.file.uri
+
+    def fix(self):
+        self.places = list(mergeRanges(self.places))
+
+    def getAveragePerPlace(self):
+        return self.total / max(1, len(self.places))
+
+    def dump(self):
+        print self.line, ":", self.total, "bytes:",
+        for offset,length in self.places:
+            print "%x..%x" % (offset, offset + length),
+        print
 
 class File(object):
     def __init__(self, uri):
@@ -74,11 +115,20 @@ class File(object):
     def getTotalPlaces(self):
         return sum(map(lambda l: len(l.places), self.lines.values()))
 
+    def getAveragePerPlace(self):
+        return self.total / max(1, self.getTotalPlaces())
+
     def __str__(self):
         return "File(%s,%d bytes in %d lines)" % (self.uri, self.total, len(self.lines))
 
     def __repr__(self):
         return "File(%s,%d bytes in %d lines)" % (repr(self.uri), self.total, len(self.lines))
+
+    def dump(self):
+        print "FILE DETAIL", repr(self.uri)
+        print self.total, "total bytes in", len(self.lines), "lines:"
+        for num, line in sorted(self.lines.iteritems()):
+            line.dump()
 
 def isint(s):
     try: int(s); return True
@@ -165,6 +215,7 @@ def blameLines(data, text = None):
         l = file.add(line, start, end - start)
         lines.add(l)
 
+    map(Line.fix, lines)
     return files, lines
 
 def perc(x, total):
@@ -245,15 +296,25 @@ printAllPlaces = False
 #print 'blamed bytes: %d bytes (%2.1f%%)' % (totalBytes, perc(totalBytes, text.size))
 #print
 
+# Fudge constant to attempt to get rid of "trivial" inlines. The effect is to
+# only count files/lines where the average number of bytes per place (a "place"
+# is any contiguous range of bytes) is above a number vaguely related to the
+# cost of a function call. The idea is that inlined code blocks smaller than
+# this number is from "trivial" functions that would not be smaller if
+# uninlined.
+PER_PLACE_MIN = 0
+
 print 'FILE SUMMARY (out of %d files)' % len(files)
 allFiles = files.values()
+allFiles = filter(lambda f: f.getAveragePerPlace() > PER_PLACE_MIN, allFiles)
 allFiles.sort(key = File.getTotal, reverse = True)
 for f in allFiles[:N_FILES]:
     bytes = f.total
-    print '%s: %d bytes (%2.1f%%) in %d places/%d lines' % (f.uri, bytes, perc(bytes, totalBytes), f.getTotalPlaces(), len(f.lines))
+    print '%s: %d bytes (%2.1f%%) in %d places/%d lines, %2.1f bytes/place' % (f.uri, bytes, perc(bytes, totalBytes), f.getTotalPlaces(), len(f.lines), f.getAveragePerPlace())
 
 print
 print 'LINE SUMMARY'
+lines = filter(lambda l: l.getAveragePerPlace() > PER_PLACE_MIN, lines)
 for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
     print '%s:%d: %d bytes in %d places' % (l.uri(), l.line, l.total, len(l.places))
     if printAllPlaces:
