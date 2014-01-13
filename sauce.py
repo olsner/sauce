@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2012 Simon Brenner
+# Copyright (c) 2012-2014 Simon Brenner
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,12 @@
 # SOFTWARE.
 #
 # vim:et:
+
+import cPickle
+import os
+import posixpath
+import subprocess
+import sys
 
 class Section(object):
     def __init__(self, name):
@@ -199,23 +205,33 @@ def test():
 
 test()
 
-import os
-import subprocess
-import sys
-
 binaryFile = None
 
+# TODO There's no excuse anymore, add an argument parser.
 if len(sys.argv) == 2:
     binaryFile = sys.argv[1]
 
 sections = {}
+files = None
+# Should be a command-line option
+dumpPickle = None
 
-if binaryFile:
+if binaryFile and binaryFile.endswith(".pickle"):
+    print "Loading parsed data from pickle..."
+    sections,files,lines = cPickle.load(open(binaryFile, "rb"))
+    print "done."
+elif binaryFile:
     sections = dict(parseSections(os.popen("readelf -SW "+binaryFile)))
     sys.stdin = os.popen("dwarfdump -l " + binaryFile)
 
 text = sections.get('.text')
-files, lines = blameLines(parseDwarfDump(sys.stdin), text)
+if files is None:
+    print "Parsing dwarfdump..."
+    files, lines = blameLines(parseDwarfDump(sys.stdin), text)
+    if dumpPickle:
+        print "Dumping parsed data to %s..." % dumpPickle
+        cPickle.dump((sections,files,lines), open(dumpPickle, "wb"))
+    print "done."
 
 textBytes = text.size
 totalBytes = sum(map(File.getTotal, files.values()))
