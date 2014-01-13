@@ -284,17 +284,20 @@ if files is None:
         cPickle.dump((sections,files,lines), open(dumpPickle, "wb"))
     print "done."
 
-textBytes = text.size
 totalBytes = sum(map(File.getTotal, files.values()))
 
 N_FILES = 20
 N_LINES = 20
 printAllPlaces = False
 
-#print 'TOTALS'
-#print '.text size: %d bytes' % text.size
-#print 'blamed bytes: %d bytes (%2.1f%%)' % (totalBytes, perc(totalBytes, text.size))
-#print
+print 'TOTALS'
+if text:
+    print '.text size: %d bytes' % text.size
+    print 'blamed bytes: %d bytes (%2.1f%%)' % (totalBytes, perc(totalBytes, text.size))
+else:
+    print '.text size unknown.'
+    print 'blamed %d bytes' % totalBytes
+print
 
 # Fudge constant to attempt to get rid of "trivial" inlines. The effect is to
 # only count files/lines where the average number of bytes per place (a "place"
