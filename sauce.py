@@ -176,6 +176,8 @@ def treeify(files):
         node[components[-1]] = f
     return dest
 
+# TODO Would be nice to squash together subdirectory structures that don't have
+# any files, and recognize if there's a common prefix of all files.
 def dump_tree_du(h, tree, path = '/'):
     if isinstance(tree, Node):
         for k,v in tree.iteritems():
@@ -309,20 +311,26 @@ def test():
 
 test()
 
+sections = {}
 binaryFile = None
+files = None
 
 # TODO There's no excuse anymore, add an argument parser.
 if len(sys.argv) == 2:
     binaryFile = sys.argv[1]
 
-sections = {}
-files = None
 # Should be a command-line option
 dumpPickle = None
 # Another command-line option: display code size per file and directory like
 # du. Run through 'sort -n' to get an idea of components that cause bloat.
 dumpDuData = False
+# summary: the normal output mode, prints a summary of the 20 most bloated
+# files and lines.
+summary = not dumpDuData
+# Display every byte range for every displayed file/line pair
+printAllPlaces = False
 
+# TODO Don't print the messages unless "verbose"
 if binaryFile and binaryFile.endswith(".pickle"):
     print "Loading parsed data from pickle..."
     sections,files,lines = cPickle.load(open(binaryFile, "rb"))
@@ -344,16 +352,15 @@ totalBytes = sum(map(File.getTotal, files.values()))
 
 N_FILES = 20
 N_LINES = 20
-printAllPlaces = False
 
-print 'TOTALS'
-if text:
-    print '.text size: %d bytes' % text.size
-    print 'blamed bytes: %d bytes (%2.1f%%)' % (totalBytes, perc(totalBytes, text.size))
-else:
-    print '.text size unknown.'
-    print 'blamed %d bytes' % totalBytes
-print
+if summary:
+    print 'TOTALS'
+    if text:
+        print '.text size: %d bytes' % text.size
+        print 'blamed bytes: %d bytes (%2.1f%%)' % (totalBytes, perc(totalBytes, text.size))
+    else:
+        print '.text size unknown.'
+        print 'blamed %d bytes' % totalBytes
 
 # Fudge constant to attempt to get rid of "trivial" inlines. The effect is to
 # only count files/lines where the average number of bytes per place (a "place"
@@ -363,22 +370,25 @@ print
 # uninlined.
 PER_PLACE_MIN = 0
 
-print 'FILE SUMMARY (out of %d files)' % len(files)
-allFiles = files.values()
-allFiles = filter(lambda f: f.getAveragePerPlace() > PER_PLACE_MIN, allFiles)
-allFiles.sort(key = File.getTotal, reverse = True)
-for f in allFiles[:N_FILES]:
-    bytes = f.total
-    print '%s: %d bytes (%2.1f%%) in %d places/%d lines, %2.1f bytes/place' % (f.uri, bytes, perc(bytes, totalBytes), f.getTotalPlaces(), len(f.lines), f.getAveragePerPlace())
+if summary and N_FILES:
+    print
+    print 'FILE SUMMARY (out of %d files)' % len(files)
+    allFiles = files.values()
+    allFiles = filter(lambda f: f.getAveragePerPlace() > PER_PLACE_MIN, allFiles)
+    allFiles.sort(key = File.getTotal, reverse = True)
+    for f in allFiles[:N_FILES]:
+        bytes = f.total
+        print '%s: %d bytes (%2.1f%%) in %d places/%d lines, %2.1f bytes/place' % (f.uri, bytes, perc(bytes, totalBytes), f.getTotalPlaces(), len(f.lines), f.getAveragePerPlace())
 
-print
-print 'LINE SUMMARY'
-lines = filter(lambda l: l.getAveragePerPlace() > PER_PLACE_MIN, lines)
-for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
-    print '%s:%d: %d bytes in %d places' % (l.uri(), l.line, l.total, len(l.places))
-    if printAllPlaces:
-        for offset,length in l.places:
-            print '\t%x..%x' % (offset, offset + length)
+if summary and N_LINES:
+    print
+    print 'LINE SUMMARY'
+    lines = filter(lambda l: l.getAveragePerPlace() > PER_PLACE_MIN, lines)
+    for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
+        print '%s:%d: %d bytes in %d places' % (l.uri(), l.line, l.total, len(l.places))
+        if printAllPlaces:
+            for offset,length in l.places:
+                print '\t%x..%x' % (offset, offset + length)
 
 if dumpDuData:
     dump_tree_du(sys.stdout, treeify(files))
