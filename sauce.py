@@ -207,6 +207,24 @@ def parseSections(lines):
             section = None
             name = None
 
+def getTextSection(sections):
+    texts = []
+    for k in sections:
+        if k.startswith(".text"): texts.append(sections[k])
+    start,end = None,None
+    # Size minus any holes in the address space.
+    totalSize = 0
+    for a in texts:
+        if start is None or a.start < start: start = a.start
+        if end is None or a.end > end: end = a.end
+        totalSize += a.size
+    vText = Section(".text")
+    vText.start = start
+    vText.end = end
+    vText.size = end - start
+    vText.totalSize = totalSize
+    return vText
+
 def parseDwarfDump(lines):
     lasturi = None
     lastaddr = None
@@ -339,7 +357,9 @@ elif binaryFile:
     sections = dict(parseSections(os.popen("readelf -SW "+binaryFile)))
     sys.stdin = os.popen("dwarfdump -l " + binaryFile)
 
-text = sections.get('.text')
+text = getTextSection(sections)
+textBytes = text.totalSize
+
 if files is None:
     print "Parsing dwarfdump..."
     files, lines = blameLines(parseDwarfDump(sys.stdin), text)
@@ -355,9 +375,9 @@ N_LINES = 20
 
 if summary:
     print 'TOTALS'
-    if text:
-        print '.text size: %d bytes' % text.size
-        print 'blamed bytes: %d bytes (%2.1f%%)' % (totalBytes, perc(totalBytes, text.size))
+    if textBytes:
+        print '.text size: %d bytes' % textBytes
+        print 'blamed bytes: %d bytes (%2.1f%%)' % (totalBytes, perc(totalBytes, textBytes))
     else:
         print '.text size unknown.'
         print 'blamed %d bytes' % totalBytes

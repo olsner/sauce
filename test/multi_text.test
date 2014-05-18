@@ -1,0 +1,8 @@
+kind=object ./test.sh
+<<<
+int special_text() __attribute__((section(".text.special")));
+int special_text() { return 1234; }
+int main() { return special_text(); }
+>>>/<stdin>:2:/
+>>>2
+>>>= 0
