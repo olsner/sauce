@@ -436,7 +436,7 @@ if summary and N_LINES:
     print 'LINE SUMMARY'
     lines = filter(lambda l: l.getAveragePerPlace() > PER_PLACE_MIN, lines)
     for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
-        print '%s:%d: %d bytes in %d places' % (l.uri(), l.line, l.total, len(l.places))
+        print '%s:%d: %d bytes in %d places, %2.1f bytes/place' % (l.uri(), l.line, l.total, len(l.places), float(l.total) / len(l.places))
         if topPlaceDisasm:
             for offset,length in l.places:
                 for x in range(offset, offset + length):
