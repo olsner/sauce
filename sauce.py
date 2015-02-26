@@ -26,6 +26,7 @@ import cPickle
 import operator
 import os
 import posixpath
+import re
 import subprocess
 import sys
 
@@ -131,6 +132,14 @@ class File(object):
         for num, line in sorted(self.lines.iteritems()):
             line.dump()
 
+    def makeDisassembly(self, disasm, outfolder):
+        for _,l in sorted(self.lines.items()):
+            #print f,l
+            print '%s:%d: (%d places)' % (self.uri, l.line, len(l.places))
+            for offset,length in l.places:
+                for x in range(offset, offset + length):
+                    if x in disasm: print disasm[x]
+
 class Node(object):
     def __init__(self):
         self.children = {}
@@ -224,6 +233,22 @@ def getTextSection(sections):
     vText.size = end - start
     vText.totalSize = totalSize
     return vText
+
+def parseDisasm(lines):
+    codeline = re.compile('^ *([0-9a-f]+):\s*(.*)$')
+    # some intereseting formats:
+    # "  100000:       02 b0 ad 1b 02 00       add    0x21bad(%rax),%dh"
+    # - disasm for a short address (space-padded, starts at column 0)
+    # "ffffffffc0100290:       89 f0                   mov    %esi,%eax"
+    # - disasm for long address (starts in column 0)
+    # some uninteresting formats:
+    # 0000000000100172 <start32.fill_pd>:
+    res = {}
+    for s in lines:
+        s = s.rstrip()
+        m = codeline.match(s)
+        if m: res[int(m.group(1), 16)] = s
+    return res
 
 def parseDwarfDump(lines):
     lasturi = None
@@ -330,6 +355,7 @@ def test():
 test()
 
 sections = {}
+disasm = {}
 binaryFile = None
 files = None
 
@@ -347,6 +373,10 @@ dumpDuData = False
 summary = not dumpDuData
 # Display every byte range for every displayed file/line pair
 printAllPlaces = False
+# Display disassembly for top places
+topPlaceDisasm = True
+# Display disassembly for all lines in all files
+fullDisassembly = False
 
 # TODO Don't print the messages unless "verbose"
 if binaryFile and binaryFile.endswith(".pickle"):
@@ -356,6 +386,7 @@ if binaryFile and binaryFile.endswith(".pickle"):
 elif binaryFile:
     sections = dict(parseSections(os.popen("readelf -SW "+binaryFile)))
     sys.stdin = os.popen("dwarfdump -l " + binaryFile)
+    disasm = parseDisasm(os.popen("objdump -Cd "+binaryFile))
 
 text = getTextSection(sections)
 textBytes = text.totalSize
@@ -406,9 +437,19 @@ if summary and N_LINES:
     lines = filter(lambda l: l.getAveragePerPlace() > PER_PLACE_MIN, lines)
     for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
         print '%s:%d: %d bytes in %d places' % (l.uri(), l.line, l.total, len(l.places))
+        if topPlaceDisasm:
+            for offset,length in l.places:
+                for x in range(offset, offset + length):
+                    if x in disasm: print disasm[x]
         if printAllPlaces:
             for offset,length in l.places:
                 print '\t%x..%x' % (offset, offset + length)
+
+if fullDisassembly:
+    print
+    print 'ANNOTATED DISASSEMBLY'
+    for f in allFiles:
+        f.makeDisassembly(disasm, "usage")
 
 if dumpDuData:
     dump_tree_du(sys.stdout, treeify(files))
