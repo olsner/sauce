@@ -237,6 +237,7 @@ def getTextSection(sections):
 
 def parseDisasm(lines):
     codeline = re.compile('^ *([0-9a-f]+):\s*(.*)$')
+    funcstart = re.compile('^ *([0-9a-f]+)\s*<(.*)>:$')
     # some intereseting formats:
     # "  100000:       02 b0 ad 1b 02 00       add    0x21bad(%rax),%dh"
     # - disasm for a short address (space-padded, starts at column 0)
@@ -245,10 +246,15 @@ def parseDisasm(lines):
     # some uninteresting formats:
     # 0000000000100172 <start32.fill_pd>:
     res = {}
+    cur_func = "<unknown>"
     for s in lines:
         s = s.rstrip()
+        m = funcstart.match(s)
+        if m:
+            cur_func = s
+            continue
         m = codeline.match(s)
-        if m: res[int(m.group(1), 16)] = s
+        if m: res[int(m.group(1), 16)] = (cur_func,s)
     return res
 
 def parseDwarfDump(lines):
@@ -439,9 +445,19 @@ if summary and N_LINES:
     for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
         print '%s:%d: %d bytes in %d places, %2.1f bytes/place' % (l.uri(), l.line, l.total, len(l.places), float(l.total) / len(l.places))
         if topPlaceDisasm:
+            last_func = None
+            bytes_in_func = 0
             for offset,length in l.places:
                 for x in range(offset, offset + length):
-                    if x in disasm: print disasm[x]
+                    if x not in disasm: continue
+                    func,line = disasm[x]
+                    if func != last_func:
+                        if last_func: print ">>", bytes_in_func, "bytes in function"
+                        last_func = func
+                        bytes_in_func = 0
+                        print ">>", func
+                    bytes_in_func += 1
+                    print line
         if printAllPlaces:
             for offset,length in l.places:
                 print '\t%x..%x' % (offset, offset + length)
