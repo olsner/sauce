@@ -85,6 +85,7 @@ class Line(object):
 
     def fix(self):
         self.places = list(mergeRanges(self.places))
+        self.total = sum(length for offset,length in self.places)
 
     def getAveragePerPlace(self):
         return self.total / max(1, len(self.places))
