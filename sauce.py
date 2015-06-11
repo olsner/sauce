@@ -458,9 +458,11 @@ if summary and N_LINES:
                         print ">>", func
                     bytes_in_func += 1
                     print line
+            print
         if printAllPlaces:
             for offset,length in l.places:
                 print '\t%x..%x' % (offset, offset + length)
+            print
 
 if fullDisassembly:
     print
