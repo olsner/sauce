@@ -23,6 +23,7 @@
 # vim:et:
 
 import cPickle
+import json
 import operator
 import os
 import posixpath
@@ -133,13 +134,37 @@ class File(object):
         for num, line in sorted(self.lines.iteritems()):
             line.dump()
 
-    def makeDisassembly(self, disasm, outfolder):
+    def makeDisassembly(self, disasm):
         for _,l in sorted(self.lines.items()):
             #print f,l
             print '%s:%d: (%d places)' % (self.uri, l.line, len(l.places))
             for offset,length in l.places:
                 for x in range(offset, offset + length):
                     if x in disasm: print disasm[x]
+
+    def getDisassemblyData(self, disasm):
+        res = { 'uri': self.uri, 'bytes': self.total, 'places': self.getTotalPlaces() }
+        lines = []
+        for _,l in sorted(self.lines.items()):
+            #print f,l
+            line = { 'line': l.line, 'bytes': l.total, 'places': len(l.places) }
+            functions = {}
+            def addf(fun, disasm, length):
+                if fun in functions:
+                    functions[fun][0] += length
+                    functions[fun].append(disasm)
+                else:
+                    functions[fun] = [length, disasm]
+            print '%s:%d: (%d places)' % (self.uri, l.line, len(l.places))
+            for offset,length in l.places:
+                for x in range(offset, offset + length):
+                    # disasm :: offset -> (function header, disassembly)
+                    if x in disasm:
+                        addf(disasm[x][0], disasm[x][1], 1)
+            line['functions'] = functions
+            lines.append(line)
+        res['lines'] = lines
+        return res
 
 class Node(object):
     def __init__(self):
@@ -381,9 +406,11 @@ summary = not dumpDuData
 # Display every byte range for every displayed file/line pair
 printAllPlaces = False
 # Display disassembly for top places
-topPlaceDisasm = True
+topPlaceDisasm = False
 # Display disassembly for all lines in all files
 fullDisassembly = False
+# Dump all data with disassembly to JSON file
+jsonDisassembly = "disassembly.json"
 
 # TODO Don't print the messages unless "verbose"
 if binaryFile and binaryFile.endswith(".pickle"):
@@ -438,11 +465,14 @@ if summary and N_FILES:
         bytes = f.total
         print '%s: %d bytes (%2.1f%%) in %d places/%d lines, %2.1f bytes/place' % (f.uri, bytes, perc(bytes, totalBytes), f.getTotalPlaces(), len(f.lines), f.getAveragePerPlace())
 
+lineSortKey = lambda l: l.total
+#lineSortKey = Line.getAveragePerPlace
+
 if summary and N_LINES:
     print
     print 'LINE SUMMARY'
     lines = filter(lambda l: l.getAveragePerPlace() > PER_PLACE_MIN, lines)
-    for l in sorted(lines, key = lambda l: l.total, reverse = True)[:N_LINES]:
+    for l in sorted(lines, key = lineSortKey, reverse = True)[:N_LINES]:
         print '%s:%d: %d bytes in %d places, %2.1f bytes/place' % (l.uri(), l.line, l.total, len(l.places), float(l.total) / len(l.places))
         if topPlaceDisasm:
             last_func = None
@@ -468,7 +498,15 @@ if fullDisassembly:
     print
     print 'ANNOTATED DISASSEMBLY'
     for f in allFiles:
-        f.makeDisassembly(disasm, "usage")
+        f.makeDisassembly(disasm)
+
+if jsonDisassembly:
+    data = {}
+    for f in allFiles:
+        data[f.uri] = f.getDisassemblyData(disasm)
+    data['filesBySize'] = [f.uri for f in sorted(allFiles, key = File.getTotal, reverse = True)]
+    with open(jsonDisassembly, "w") as h:
+        h.write(json.dumps(data, indent=1))
 
 if dumpDuData:
     dump_tree_du(sys.stdout, treeify(files))
